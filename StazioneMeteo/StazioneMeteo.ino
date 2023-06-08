@@ -1,71 +1,209 @@
-#include <SFE_BMP180.h>
-#include <Wire.h>
+#include <AirQualityClass.h>
+#include <Arduino_MKRIoTCarrier.h>
+#include <Arduino_MKRIoTCarrier_Buzzer.h>
+#include <Arduino_MKRIoTCarrier_Qtouch.h>
+#include <Arduino_MKRIoTCarrier_Relay.h>
+#include <EnvClass.h>
+#include <IMUClass.h>
+#include <MKRIoTCarrierDefines.h>
+#include <PressureClass.h>
 
 
-SFE_BMP180 sensorePressione;
+const int sensoreUmiditaTerreno = A5; //indica il pin del sensore
+
+MKRIoTCarrier carrier;
+
+//bool CARRIER_CASE = false;
+float temperature = 0;
+float humidity = 0;
+float pressure = 0;
+float soilMoisture = 0;
+
+
+const int interval = 30000;  //tempo tra le rilevazioni
+const int tSpento = 20000;  //tempo che rimane spento
+const int tShow = 700;  //tempo in cui si vede a schermo le misure
+unsigned long previousMillis = 0;
+
 
 void setup() {
   Serial.begin(9600);
+  while(!Serial); //questo fa iniziare solo se c'è la seriale, quindi se siamo collegato a pc
+  carrier.begin();
+  pinMode(sensoreUmiditaTerreno, INPUT);
 
-
-      if (sensorePressione.begin())
-        Serial.println("BMP180 init success");
-      else
-      {
-        // Oops, something went wrong, this is usually a connection problem,
-        // see the comments at the top of this sketch for the proper connections.
-
-        Serial.println("BMP180 init fail\n\n");
-        while(1); // Pause forever.
-      }
+  Serial.println(" time  |  Temp  |  Humi  |  Press  |  Soil");
 
 
 }
 
 void loop() {
-  char stato;
 
-   // Start a pressure measurement:
-      // The parameter is the oversampling setting, from 0 to 3 (highest res, longest wait).
-      // If request is successful, the number of ms to wait is returned.
-      // If request is unsuccessful, 0 is returned.
+  temperature = carrier.Env.readTemperature();
+  humidity = carrier.Env.readHumidity();
+  pressure = carrier.Pressure.readPressure();
+  soilMoisture = analogRead(sensoreUmiditaTerreno);
 
-  stato = sensorePressione.startPressure(3);
-      if (stato != 0)
-      {
-        // Wait for the measurement to complete:
-        delay(stato);
+  //carrier.Buttons.update();
 
-        // Retrieve the completed pressure measurement:
-        // Note that the measurement is stored in the variable P.
-        // Note also that the function requires the previous temperature measurement (T).
-        // (If temperature is stable, you can do one temperature measurement for a number of pressure measurements.)
-        // Function returns 1 if successful, 0 if failure.
+  misura();
+  
 
-        status = pressure.getPressure(P,T);
-        if (status != 0)
-        {
-          // Print out the measurement:
-          Serial.print("absolute pressure: ");
-          Serial.print(P,2);
-          Serial.print(" mb, ");
-          Serial.print(P*0.0295333727,2);
-          Serial.println(" inHg");
+  
+  
+  unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis >= interval) {
+    scrive();
+    printTemperature();
+    delay(tShow);
+    printHumidity();
+    delay(tShow);
+    printPressure();
+    delay(tShow);
+    printSoilMoisture();
+    delay(tShow);
 
-          // The pressure sensor returns abolute pressure, which varies with altitude.
-          // To remove the effects of altitude, use the sealevel function and your current altitude.
-          // This number is commonly used in weather reports.
-          // Parameters: P = absolute pressure in mb, ALTITUDE = current altitude in m.
-          // Result: p0 = sea-level compensated pressure in mb
+    Serial.print(currentMillis);
+    Serial.print(" ms, ");
+    Serial.print(temperature);
+    Serial.print(" °C, ");
+    Serial.print(humidity);
+    Serial.print(" %, ");
+    Serial.print(pressure);
+    Serial.print(" Pa, ");
+    Serial.print(soilMoisture);
+    Serial.println(" %");
+
+    previousMillis = currentMillis;
+
+    spento();
+    delay(tSpento);
+  }
 
 
+  
 
-         
-        }
-        else Serial.println("error retrieving pressure measurement\n");
-      }
-      else Serial.println("error starting pressure measurement\n");
-
+  /*
+  if(carrier.Button1.onTouchDown()) {
+    printTemperature();
+  }
+  if(carrier.Button2.onTouchDown()) {
+    printHumidity();
+  }
+  */
 }
 
 
+
+void printTemperature() {
+  carrier.display.fillScreen(ST77XX_RED);
+  carrier.display.setTextColor(ST77XX_BLACK);
+  carrier.display.setTextSize(2);
+
+  carrier.display.setCursor(50, 100);
+  carrier.display.print("Temperatura: ");
+  carrier.display.setCursor(75, 120);
+  carrier.display.print(temperature);
+  carrier.display.print(" C");
+}
+
+void printHumidity()  {
+  carrier.display.fillScreen(ST77XX_BLUE);
+  carrier.display.setTextColor(ST77XX_WHITE);
+  carrier.display.setTextSize(2);
+
+  carrier.display.setCursor(65, 100);
+  carrier.display.print("Umidita': ");
+  carrier.display.setCursor(75, 120);
+  carrier.display.print(humidity);
+  carrier.display.print(" %");
+}
+
+void printPressure()  {
+  carrier.display.fillScreen(ST77XX_GREEN);
+  carrier.display.setTextColor(ST77XX_MAGENTA);
+  carrier.display.setTextSize(2);
+
+  carrier.display.setCursor(40, 100);
+  carrier.display.print("pressione atm: ");
+  carrier.display.setCursor(65, 120);
+  carrier.display.print(pressure);
+  carrier.display.print(" Pa");
+}
+
+void printSoilMoisture()  {
+  carrier.display.fillScreen(ST77XX_ORANGE);
+  carrier.display.setTextColor(ST77XX_BLUE);
+  carrier.display.setTextSize(2);
+
+  carrier.display.setCursor(20, 100);
+  carrier.display.print("umidita' terreno: ");
+  carrier.display.setCursor(70, 120);
+  carrier.display.print(soilMoisture);
+  carrier.display.print(" %");
+}
+
+
+//mette i led gialli quando misura
+void misura() {
+  carrier.leds.clear();
+  carrier.leds.setBrightness(20);
+  //carrier.leds.setPixelColor(index, red, green, blue);
+  carrier.leds.setPixelColor(0,255,255,0);
+  carrier.leds.setPixelColor(1,255,255,0);
+  carrier.leds.setPixelColor(2,255,255,0);
+  carrier.leds.setPixelColor(3,255,255,0);
+  carrier.leds.setPixelColor(4,255,255,0);
+
+  carrier.leds.show();
+
+  carrier.display.fillScreen(ST77XX_YELLOW);
+  carrier.display.setTextColor(ST77XX_BLACK);
+  carrier.display.setTextSize(2);
+
+  carrier.display.setCursor(25, 110);
+  carrier.display.println("sta misurando...");
+}
+
+//spegna i led quando è fermo
+void spento() {
+  carrier.leds.clear();
+  carrier.leds.show();
+
+  carrier.display.fillScreen(ST77XX_BLACK);
+  carrier.display.setTextColor(ST77XX_WHITE);
+  carrier.display.setTextSize(2);
+
+  carrier.display.setCursor(80, 110);
+  carrier.display.println("spento");
+}
+
+//mette i led a rosso quando scrive
+void scrive() {
+  carrier.leds.clear();
+
+  carrier.leds.setPixelColor(0,255,0,0);
+  carrier.leds.setPixelColor(1,255,0,0);
+  carrier.leds.setPixelColor(2,255,0,0);
+  carrier.leds.setPixelColor(3,255,0,0);
+  carrier.leds.setPixelColor(4,255,0,0);
+  carrier.leds.show();
+}
+
+void printToString()  {
+  Serial.print("Temperature = ");
+  Serial.print(temperature);
+  Serial.println(" °C");
+
+  Serial.print("Humidity = ");
+  Serial.print(humidity);
+  Serial.println(" %");
+
+  Serial.print("Pressure = ");
+  Serial.print(pressure);
+  Serial.println(" Pa");
+
+  Serial.print("Soil Moisture = ");
+  Serial.print(soilMoisture);
+  Serial.println(" %");
+}
