@@ -1,86 +1,229 @@
-#include <BMP180.h>
-#include "DHT.h"
-#include <SD.h>
-#include <SPI.h>
-#include <SFE_BMP180.h>
-#include <Wire.h>
-#include <Adafruit_BMP280.h>
+#include <AirQualityClass.h>
+#include <Arduino_MKRIoTCarrier.h>
+#include <Arduino_MKRIoTCarrier_Buzzer.h>
+#include <Arduino_MKRIoTCarrier_Qtouch.h>
+#include <Arduino_MKRIoTCarrier_Relay.h>
+#include <EnvClass.h>
+#include <IMUClass.h>
+#include <MKRIoTCarrierDefines.h>
+#include <PressureClass.h>
 
-const int sensoreUmiditaTerreno = ; //indica il pin del sensore
-DHT dht;  //sensore temperatura e umidita
-const int sensoreDHT = ;  //indica il pin del sensore
+#include "ArduinoLowPower.h"
+
+
+const int sensoreUmiditaTerreno = A5; //indica il pin del sensore
+
+MKRIoTCarrier carrier;
+
+//bool CARRIER_CASE = false;
+float temperature = 0;
+float humidity = 0;
+float pressure = 0;
+float soilMoisture = 0;
+
+
+const int interval = 30000;  //tempo tra le rilevazioni
+const int tSpento = 20000;  //tempo che rimane spento
+const int tShow = 700;  //tempo in cui si vede a schermo le misure
+unsigned long previousMillis = 0;
+
 
 void setup() {
-  // put your setup code here, to run once:
   Serial.begin(9600);
+  while(!Serial); //questo fa iniziare solo se c'è la seriale, quindi se siamo collegato a pc
+  carrier.begin();
   pinMode(sensoreUmiditaTerreno, INPUT);
 
-  dht.setup(sensoreDHT);
+  Serial.println("  Temp  |  Humi  |   Press  |   Soil   |  time ");
 
 
 }
 
-const int interval = 1000;  //tempo tra le rilevazioni
 void loop() {
-  // put your main code here, to run repeatedly:
-  unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= interval) {
-    //attacco alimentazione ai sensori
 
-    //misurazioni
-    int pressioneAtmosferica = misuraPressioneAtmosferica(/*BMP280 o BMP180*/);
-    float temperatora = misuraTemperatura(/*BMP280 o BMP180*/);
-    int altitudine = misuraAltitudine(/*BMP280 o BMP180*/);
-    float umidita = misuraUmidita(/*DHT11*/);
-    float umiditaTerreno = misuraUmiditaTerreno(sensoreUmiditaTerreno);
+  carrier.leds.clear();
+  carrier.leds.show();
 
+  carrier.display.fillScreen(ST77XX_WHITE);
+  carrier.display.setTextColor(ST77XX_GREEN);
+  carrier.display.setTextSize(2);
 
-    //stacco alimentazione ai sensori
+  carrier.display.setCursor(75, 110);
+  carrier.display.println("aspetto");
 
-    //scrivo sulla scheda ??qui oppure i sensori scrivono nel file??
+  temperature = carrier.Env.readTemperature();
+  humidity = carrier.Env.readHumidity();
+  pressure = carrier.Pressure.readPressure();
+  soilMoisture = analogRead(sensoreUmiditaTerreno);
 
-    previousMillis = currentMillis;
+  carrier.Buttons.update();
+
+  if(carrier.Button1.onTouchDown()) {
+      misura();
+
+      delay(200);
+      
+      printTemperature();
+      delay(tShow);
+      printHumidity();
+      delay(tShow);
+      printPressure();
+      delay(tShow);
+      printSoilMoisture();
+      delay(tShow);
+  }
+  if(carrier.Button2.onTouchDown()) {
+      scrive();
+
+      delay(200);
+
+      Serial.print(temperature);
+      Serial.print(" °C, ");
+      Serial.print(humidity);
+      Serial.print(" %, ");
+      Serial.print(pressure);
+      Serial.print(" Pa, ");
+      Serial.print(soilMoisture);
+      Serial.print(" %, ");
+      Serial.print(millis());
+      Serial.println(" ms");
+  }
+  if(carrier.Button3.onTouchDown()) {
+    spento();
+    LowPower.sleep(tSpento);
+    //delay(tSpento);
   }
 
+
 }
 
 
 
-float misuratemperatura(DHT dht)  {
-  return dht.temperature();
+void printTemperature() {
+  carrier.display.fillScreen(ST77XX_RED);
+  carrier.display.setTextColor(ST77XX_BLACK);
+  carrier.display.setTextSize(2);
+
+  carrier.display.setCursor(50, 100);
+  carrier.display.print("Temperatura: ");
+  carrier.display.setCursor(75, 120);
+  carrier.display.print(temperature);
+  carrier.display.print(" C");
 }
 
-float misuraUmidita(DHT dht)  {
-  return dht.humidity();
+void printHumidity()  {
+  carrier.display.fillScreen(ST77XX_BLUE);
+  carrier.display.setTextColor(ST77XX_WHITE);
+  carrier.display.setTextSize(2);
+
+  carrier.display.setCursor(65, 100);
+  carrier.display.print("Umidita': ");
+  carrier.display.setCursor(75, 120);
+  carrier.display.print(humidity);
+  carrier.display.print(" %");
 }
 
-float misuraUmiditaTerreno(int sensoreUmiditaTerreno)  {
-  return analogRead(sensoreUmiditaTerreno);
+void printPressure()  {
+  carrier.display.fillScreen(ST77XX_GREEN);
+  carrier.display.setTextColor(ST77XX_MAGENTA);
+  carrier.display.setTextSize(2);
+
+  carrier.display.setCursor(40, 100);
+  carrier.display.print("pressione atm: ");
+  carrier.display.setCursor(65, 120);
+  carrier.display.print(pressure);
+  carrier.display.print(" Pa");
 }
 
-void writeToFile(char fileName[], char text[])
-{
-  myFile = SD.open(fileName, FILE_WRITE);
-  if (myFile) // it opened OK
-    {
-    Serial.println("Writing to file");
-    myFile.println(text);
-    myFile.close(); 
-    Serial.println("Done");
-    }
-  else 
-    Serial.println("Error opening file");
-}
+void printSoilMoisture()  {
+  carrier.display.fillScreen(ST77XX_ORANGE);
+  carrier.display.setTextColor(ST77XX_BLUE);
+  carrier.display.setTextSize(2);
 
-void deleteFile(char fileName[])
-{
- //delete a file:
-  if (SD.exists(fileName)) 
-    {
-    Serial.println("Removing text from file");
-    SD.remove(fileName);
-    Serial.println("Done");
-   } 
+  carrier.display.setCursor(20, 100);
+  carrier.display.print("umidita' terreno: ");
+  carrier.display.setCursor(70, 120);
+  carrier.display.print(soilMoisture);
+  carrier.display.print(" %");
 }
 
 
+//mette i led gialli quando misura
+void misura() {
+  carrier.leds.clear();
+  carrier.leds.setBrightness(20);
+
+  //carrier.leds.setPixelColor(index, red, green, blue);
+  carrier.leds.setPixelColor(0,255,255,0);
+  carrier.leds.setPixelColor(1,255,255,0);
+  carrier.leds.setPixelColor(2,255,255,0);
+  carrier.leds.setPixelColor(3,255,255,0);
+  carrier.leds.setPixelColor(4,255,255,0);
+
+  carrier.leds.show();
+
+  carrier.display.fillScreen(ST77XX_YELLOW);
+  carrier.display.setTextColor(ST77XX_BLACK);
+  carrier.display.setTextSize(2);
+
+  carrier.display.setCursor(25, 110);
+  carrier.display.println("sta misurando...");
+}
+
+//spegne i led quando è fermo
+void spento() {
+
+  carrier.leds.clear();
+  carrier.leds.setBrightness(20);
+
+  //carrier.leds.setPixelColor(index, red, green, blue);
+  carrier.leds.setPixelColor(2,0,0,255);
+
+
+  carrier.leds.show();
+
+  carrier.display.fillScreen(ST77XX_BLACK);
+  carrier.display.setTextColor(ST77XX_WHITE);
+  carrier.display.setTextSize(2);
+
+  carrier.display.setCursor(80, 110);
+  carrier.display.println("spento");
+}
+
+//mette i led a rosso quando scrive
+void scrive() {
+  carrier.leds.clear();
+  carrier.leds.setBrightness(20);
+
+  carrier.leds.setPixelColor(0,255,0,0);
+  carrier.leds.setPixelColor(1,255,0,0);
+  carrier.leds.setPixelColor(2,255,0,0);
+  carrier.leds.setPixelColor(3,255,0,0);
+  carrier.leds.setPixelColor(4,255,0,0);
+
+  carrier.display.fillScreen(ST77XX_RED);
+  carrier.display.setTextColor(ST77XX_WHITE);
+  carrier.display.setTextSize(2);
+  carrier.display.setCursor(80, 110);
+  carrier.display.println("scrive");
+
+  carrier.leds.show();
+}
+
+void printToString()  {
+  Serial.print("Temperature = ");
+  Serial.print(temperature);
+  Serial.println(" °C");
+
+  Serial.print("Humidity = ");
+  Serial.print(humidity);
+  Serial.println(" %");
+
+  Serial.print("Pressure = ");
+  Serial.print(pressure);
+  Serial.println(" Pa");
+
+  Serial.print("Soil Moisture = ");
+  Serial.print(soilMoisture);
+  Serial.println(" %");
+}
