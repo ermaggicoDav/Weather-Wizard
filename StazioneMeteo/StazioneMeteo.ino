@@ -32,7 +32,7 @@ void setup() {
   carrier.begin();
   pinMode(sensoreUmiditaTerreno, INPUT);
 
-  Serial.println(" time  |  Temp  |  Humi  |  Press  |  Soil");
+  Serial.println("  Temp  |  Humi  |   Press  |   Soil   |  time ");
 
 
 }
@@ -54,6 +54,18 @@ void loop() {
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= interval) {
     scrive();
+
+    Serial.print(temperature);
+    Serial.print(" °C, ");
+    Serial.print(humidity);
+    Serial.print(" %, ");
+    Serial.print(pressure);
+    Serial.print(" Pa, ");
+    Serial.print(soilMoisture);
+    Serial.print(" %, ");
+    Serial.print(currentMillis);
+    Serial.println(" ms");
+
     printTemperature();
     delay(tShow);
     printHumidity();
@@ -62,17 +74,6 @@ void loop() {
     delay(tShow);
     printSoilMoisture();
     delay(tShow);
-
-    Serial.print(currentMillis);
-    Serial.print(" ms, ");
-    Serial.print(temperature);
-    Serial.print(" °C, ");
-    Serial.print(humidity);
-    Serial.print(" %, ");
-    Serial.print(pressure);
-    Serial.print(" Pa, ");
-    Serial.print(soilMoisture);
-    Serial.println(" %");
 
     previousMillis = currentMillis;
 
@@ -165,7 +166,7 @@ void misura() {
   carrier.display.println("sta misurando...");
 }
 
-//spegna i led quando è fermo
+//spegne i led quando è fermo
 void spento() {
   carrier.leds.clear();
   carrier.leds.show();
