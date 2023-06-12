@@ -10,6 +10,12 @@
 
 MKRIoTCarrier carrier;
 
+const int sensoreUmiditaTerreno = A5; //indica il pin del sensore
+
+float temperature = 0;
+float humidity = 0;
+float pressure = 0;
+float soilMoisture = 0;
 
 #include <WiFiNINA.h>
 
@@ -38,6 +44,11 @@ void setup() {
 
 void loop() {
   client = server.available();
+
+  temperature = carrier.Env.readTemperature();
+  humidity = carrier.Env.readHumidity();
+  pressure = carrier.Pressure.readPressure();
+  soilMoisture = map(analogRead(sensoreUmiditaTerreno),0,1023,0,100);
 
   if (client) {
     printWEB();
@@ -113,12 +124,23 @@ void printWEB() {
             client.println();
            
             //create the buttons
-            client.print("Click <a href=\"/H\">here</a> turn the LED on<br>");
-            client.print("Click <a href=\"/L\">here</a> turn the LED off<br><br>");
+            client.print("Click <a href=\"/H\">here</a> refresh<br>");
+            //client.print("Click <a href=\"/L\">here</a> turn the LED off<br><br>");
             
             int randomReading = analogRead(A1);
             client.print("Random reading from analog pin: ");
             client.print(randomReading);
+
+            client.print(temperature);
+            client.print(" °C, ");
+            client.print(humidity);
+            client.print(" %, ");
+            client.print(pressure);
+            client.print(" Pa, ");
+            client.print(soilMoisture);
+            client.print(" %, ");
+            client.print(millis());
+            client.println(" ms");
            
             
             
@@ -137,6 +159,7 @@ void printWEB() {
         }
 
         if (currentLine.endsWith("GET /H")) {
+          
           carrier.leds.clear();
 
           carrier.leds.setBrightness(20);
@@ -149,12 +172,18 @@ void printWEB() {
           carrier.leds.setPixelColor(4,0,255,0);
           carrier.leds.show();
 
-          carrier.display.fillScreen(ST77XX_WHITE);
-          carrier.display.setTextColor(ST77XX_GREEN);
-          carrier.display.setTextSize(2);
+          client.print(temperature);
+          client.print(" °C, ");
+          client.print(humidity);
+          client.print(" %, ");
+          client.print(pressure);
+          client.print(" Pa, ");
+          client.print(soilMoisture);
+          client.print(" %, ");
+          client.print(millis());
+          client.println(" ms");
+          
 
-          carrier.display.setCursor(75, 110);
-          carrier.display.println("acceso");       
         }
         if (currentLine.endsWith("GET /L")) {
           carrier.leds.clear();  
