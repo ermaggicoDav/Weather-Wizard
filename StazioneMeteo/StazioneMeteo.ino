@@ -8,19 +8,23 @@
 #include <MKRIoTCarrierDefines.h>
 #include <PressureClass.h>
 
+File myFile;  //inizializzo il file in cui voglio scrivere e salvare i dati
+
 MKRIoTCarrier carrier;
 
 const int sensoreUmiditaTerreno = A5; //indica il pin del sensore
 
-float temperature = 0;
-float humidity = 0;
-float pressure = 0;
-float soilMoisture = 0;
+float temperature;
+float humidity;
+float pressure;
+float soilMoisture;
 
 const int interval = 30000;  //tempo tra le rilevazioni
-const int tSpento = 20000;  //tempo che rimane spento
-const int tShow = 700;  //tempo in cui si vede a schermo le misure
-unsigned long previousMillis = 0;
+const int tOff = 20000;  //tempo in cui l'arduino rimane spento
+const int tShow = 700;  //tempo in cui si stampa a schermo le misure
+unsigned long previousMillis = 0; //ultima misurazione di tempo
+unsigned long currentMillis;  //misurazione attuale del tempo, viene usata principalmente nel main
+WiFiClient client = 0;  //inizializza la libreria del client
 
 #include <WiFiNINA.h>
 
@@ -30,15 +34,15 @@ int keyIndex = 0;                 // your network key Index number (needed only 
 int status = WL_IDLE_STATUS;      //connection status
 WiFiServer server(80);            //server socket
 
-WiFiClient client = server.available();
+
 
 
 void setup() {
-  Serial.begin(9600);
-  carrier.begin();
-  pinMode(sensoreUmiditaTerreno, INPUT);
+  Serial.begin(9600);   //inizializza la seriale
+  carrier.begin();      //inizializza il cacchetto dell'oggetto
+  pinMode(sensoreUmiditaTerreno, INPUT);  //inizializza il pin A5 per il sensore di umidità del terreno
 
-  while (!Serial);
+  while (!Serial);    //finche non trova la seriale non inizia
   
   enable_WiFi();
   connect_WiFi();
@@ -48,30 +52,51 @@ void setup() {
 
 }
 
-unsigned long currentMillis = 0;
+
 void loop() {
-  client = server.available();
-
-  spento();
   
-  misura();
+  client = server.available();
+  realmain();
+  //freetry();
 
+}
+
+void realmain() { 
+
+   currentMillis = millis();    //aggiorno il tempo corrente
+    if (currentMillis - previousMillis >= interval) {   //se la differenza di tempo supera il tempo di intervallo impostato, entra nelle graffe
+      measuring();    //la funzione misura e aggiorna le variabili
+      write();        //la funzione scrive sul terminale e sullo schermo le variabili
+      previousMillis = currentMillis;   //aggiorna il tempo della misurazione
+    }
+  if(client)  {   //se il cliente è presente connesso alla pagina/server
+    printWEB();   //stampo a schermo
+  }
+    
+}
+
+//modalità di prova con i bottoni per testare le singole funzioni
+void freetry() {
+  
+  measuring();
+
+  client = server.available();
   if(client)  {
     printWEB();
 
-  } else  {
-    currentMillis = millis();
-    if (currentMillis - previousMillis >= interval) {
-      scrive();
+      carrier.Buttons.update();
 
-        
-
-      previousMillis = currentMillis;
-      
+    if(carrier.Button1.onTouchDown()) {
+        closed();
     }
-  }
+    if(carrier.Button2.onTouchDown()) {
+        write();
+    }
+  } else  {
 
+  }
 }
+
 
 
 void printWifiStatus() {
@@ -121,6 +146,7 @@ void connect_WiFi() {
   }
 }
 
+String dati = "";
 void printWEB() {
   if (client) {                             // if you get a client,
     Serial.println("new client");           // print a message out the serial port
@@ -147,8 +173,8 @@ void printWEB() {
             
             int randomReading = analogRead(A1);
             //client.print(randomReading);
-
-            client.print(toString());
+            dati += CSVtoString() + "<br>";
+            client.print(dati);
            
             
 
@@ -175,6 +201,7 @@ void printWEB() {
 
 
 
+//scrive la temperatura sullo schermino
 void printTemperature() {
   carrier.display.fillScreen(ST77XX_RED);
   carrier.display.setTextColor(ST77XX_BLACK);
@@ -187,6 +214,7 @@ void printTemperature() {
   carrier.display.print(" C");
 }
 
+//scrive l'umidità sullo schermino
 void printHumidity()  {
   carrier.display.fillScreen(ST77XX_BLUE);
   carrier.display.setTextColor(ST77XX_WHITE);
@@ -199,6 +227,7 @@ void printHumidity()  {
   carrier.display.print(" %");
 }
 
+//scrive la pressione sullo schermino
 void printPressure()  {
   carrier.display.fillScreen(ST77XX_GREEN);
   carrier.display.setTextColor(ST77XX_MAGENTA);
@@ -211,6 +240,7 @@ void printPressure()  {
   carrier.display.print(" Pa");
 }
 
+//scrive l'umidità del suolo sullo schermino
 void printSoilMoisture()  {
   carrier.display.fillScreen(ST77XX_ORANGE);
   carrier.display.setTextColor(ST77XX_BLUE);
@@ -225,7 +255,7 @@ void printSoilMoisture()  {
 
 
 //mette i led gialli quando misura
-void misura() {
+void measuring() {
   carrier.leds.clear();
   carrier.leds.setBrightness(20);
   //carrier.leds.setPixelColor(index, red, green, blue);
@@ -251,7 +281,7 @@ void misura() {
 }
 
 //spegne i led quando è fermo
-void spento() {
+void closed() {
   carrier.leds.clear();
   carrier.leds.show();
 
@@ -260,13 +290,22 @@ void spento() {
   carrier.display.setTextSize(2);
 
   carrier.display.setCursor(80, 110);
-  carrier.display.println("spento");
+  carrier.display.println("closed");
 
-  delay(tSpento);
+  delay(tOff);
 }
 
 //mette i led a rosso quando scrive
-void scrive() {
+void write() {
+
+  serialWrite();
+  displayWrite();
+  fileWrite();
+  
+}
+
+//scrive tutti i dati sullo schermino
+void displayWrite() {
   carrier.leds.clear();
 
   carrier.leds.setPixelColor(0,255,0,0);
@@ -276,16 +315,7 @@ void scrive() {
   carrier.leds.setPixelColor(4,255,0,0);
   carrier.leds.show();
 
-  Serial.print(temperature);
-    Serial.print(" °C, ");
-    Serial.print(humidity);
-    Serial.print(" %, ");
-    Serial.print(pressure);
-    Serial.print(" Pa, ");
-    Serial.print(soilMoisture);
-    Serial.print(" %, ");
-    Serial.print(currentMillis);
-    Serial.println(" ms");
+  
 
     printTemperature();
     delay(tShow);
@@ -297,6 +327,31 @@ void scrive() {
     delay(tShow);
 }
 
+//scrive tutti i dati sulla seriale
+void serialWrite()  {
+    Serial.print(temperature);
+    Serial.print(" °C, ");
+    Serial.print(humidity);
+    Serial.print(" %, ");
+    Serial.print(pressure);
+    Serial.print(" Pa, ");
+    Serial.print(soilMoisture);
+    Serial.print(" %, ");
+    Serial.print(currentMillis);
+    Serial.println(" ms");
+}
+
+//scrive tutti i dati su un file su schedina SD inserita
+void fileWrite()  {
+  myFile = SD.open("StazioneMeteo.csv", FILE_WRITE);
+  if(myFile)  {
+    myFile.print(CSVtoString());
+  } else  {
+    Serial.println("errore apertura file");
+  }
+}
+
+//ritorna una string con tutti i dati delle misurazioni
 String toString()  {
   String s = "";
   s += "Temperature = ";
@@ -317,6 +372,27 @@ String toString()  {
 
   s += "Time = ";
   s += millis();
+  s += " ms";
+
+  return s;
+}
+
+//ritorna una string con tutti i dati delle misurazioni in formato compatibile con file CSV
+String CSVtoString()  {
+  String s = "";
+  s += temperature;
+  s += " C,";
+
+  s += humidity;
+  s += " %,";
+
+  s += pressure;
+  s += " Pa,";
+
+  s += soilMoisture;
+  s += " %,";
+
+  s += currentMillis;
   s += " ms";
 
   return s;
